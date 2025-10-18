@@ -1,6 +1,6 @@
 import Header from "@/components/Header";
 import Hero from "@/components/Hero";
-import MapPlaceholder from "@/components/MapPlaceholder";
+import InteractiveMap from "@/components/InteractiveMap";
 import About from "@/components/About";
 import ContactForm from "@/components/ContactForm";
 
@@ -10,7 +10,7 @@ const Index = () => {
       <Header />
       <main>
         <Hero />
-        <MapPlaceholder />
+        <InteractiveMap />
         <About />
         <ContactForm />
       </main>
