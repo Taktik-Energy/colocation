@@ -36,8 +36,10 @@ const debounce = (fn: (...args: any[]) => void, ms: number) => {
   };
 };
 
-const PVMap: React.FC = () => {
-  const [minMax, setMinMax] = useState<[number, number]>([10000, 100000]);
+const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
+  const DEBUG = true;
+  const [minMax, setMinMax] = useState<[number, number]>([10000, 2000000]);
+  const [tempRange, setTempRange] = useState<[number, number]>([10000, 2000000]);
   const [statuses, setStatuses] = useState<Record<StatusKey, boolean>>({ operating: true, connected: true, planned: true });
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
@@ -54,6 +56,13 @@ const PVMap: React.FC = () => {
     setLoading(true);
     try {
       const bbox: [number, number, number, number] = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+      if (DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log('[RPC] pv_map_search params', {
+          min_kwp: minMax[0], max_kwp: minMax[1], statuses: activeStatuses.length ? activeStatuses : null,
+          completed_after: dateFrom || null, completed_before: dateTo || null, bbox
+        });
+      }
       const data = await pvMapSearch({
         min_kwp: minMax[0],
         max_kwp: minMax[1],
@@ -63,6 +72,10 @@ const PVMap: React.FC = () => {
         completed_before: dateTo || null,
         bbox,
       });
+      if (DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log('[RPC] pv_map_search result count', data?.length, data?.slice(0, 3));
+      }
       setProjects(data);
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -72,9 +85,13 @@ const PVMap: React.FC = () => {
     }
   }, [minMax, activeStatuses, dateFrom, dateTo]);
 
-  const debouncedFetch = useMemo(() => debounce(fetchData, 300), [fetchData]);
+  const debouncedFetch = useMemo(() => debounce(fetchData, 400), [fetchData]);
 
   const handleMapIdle = useCallback((bounds: LatLngBounds, zoom: number) => {
+    if (DEBUG) {
+      // eslint-disable-next-line no-console
+      console.log('[Map idle]', { bbox: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()], zoom });
+    }
     latestBoundsRef.current = bounds;
     latestZoomRef.current = zoom;
     debouncedFetch();
@@ -84,8 +101,14 @@ const PVMap: React.FC = () => {
     debouncedFetch();
   }, [minMax, activeStatuses, dateFrom, dateTo]);
 
+  // keep tempRange in sync if minMax changes externally
+  useEffect(() => {
+    setTempRange(minMax);
+  }, [minMax]);
+
   // Build supercluster index when projects change
   type PointFeature = GeoJSON.Feature<GeoJSON.Point, { cluster: false; projectId: string }>;
+
   const features: PointFeature[] = useMemo(() => (
     projects.map((p) => ({
       type: 'Feature',
@@ -104,6 +127,10 @@ const PVMap: React.FC = () => {
     const bbox: [number, number, number, number] = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
     const zoom = Math.round(latestZoomRef.current);
     const result = index.getClusters(bbox, zoom);
+    if (DEBUG) {
+      // eslint-disable-next-line no-console
+      console.log('[Cluster] clusters', { zoom, bbox, features: features.length, clusters: result.length });
+    }
     setClusters(result as Array<GeoJSON.Feature<GeoJSON.Point, any>>);
   }, [index]);
 
@@ -157,7 +184,7 @@ const PVMap: React.FC = () => {
                 <div className="space-y-1">
                   <div className="font-semibold">{p.name}</div>
                   <div className="text-sm">{p.capacity_kwp?.toLocaleString()} kWp</div>
-                  <div className="text-sm capitalize">Status: {p.status}</div>
+                  <div className="text-sm">Status: {p.status || '—'}</div>
                   {p.completion_date && <div className="text-sm">Completion: {p.completion_date}</div>}
                   {p.operator && <div className="text-sm">Operator: {p.operator}</div>}
                   {p.grid_operator && <div className="text-sm">Grid: {p.grid_operator}</div>}
@@ -174,7 +201,7 @@ const PVMap: React.FC = () => {
   };
 
   return (
-    <div className="w-screen h-screen relative">
+    <div className={fullScreen ? "w-screen h-screen relative" : "w-full h-[600px] relative rounded-lg border border-border shadow-sm"}>
       <div className="absolute inset-0">
         <MapContainer center={defaultCenter} zoom={6} scrollWheelZoom className="h-full w-full" style={{ height: '100%', width: '100%' }}>
           <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -186,10 +213,17 @@ const PVMap: React.FC = () => {
       <div className="absolute left-4 top-4 z-[1000] w-72 max-w-[85vw] bg-background/95 backdrop-blur border border-border rounded-lg shadow p-4 space-y-4">
         <div className="text-sm font-medium">Size (kWp)</div>
         <div className="px-1">
-          <Slider min={10000} max={500000} step={1000} value={[minMax[0], minMax[1]]} onValueChange={(v) => setMinMax([v[0], v[1]])} />
+          <Slider
+            min={10000}
+            max={2000000}
+            step={1000}
+            value={[tempRange[0], tempRange[1]]}
+            onValueChange={(v) => setTempRange([v[0], v[1]])}
+            onValueCommit={(v) => setMinMax([v[0], v[1]])}
+          />
           <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-            <span>{minMax[0].toLocaleString()}</span>
-            <span>{minMax[1].toLocaleString()}</span>
+            <span>{tempRange[0].toLocaleString()}</span>
+            <span>{tempRange[1].toLocaleString()}</span>
           </div>
         </div>
 
@@ -218,6 +252,15 @@ const PVMap: React.FC = () => {
           </div>
         )}
       </div>
+
+      {DEBUG && (
+        <div className="absolute bottom-4 left-4 z-[1000] text-[10px] leading-tight bg-background/95 backdrop-blur border border-border rounded px-2 py-1 text-muted-foreground">
+          <div>projects: {projects.length}</div>
+          <div>clusters: {clusters.length}</div>
+          <div>statuses: {activeStatuses.join(',') || 'none'}</div>
+          <div>range: {tempRange[0].toLocaleString()} - {tempRange[1].toLocaleString()} kWp</div>
+        </div>
+      )}
     </div>
   );
 };
