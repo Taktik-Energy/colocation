@@ -1,0 +1,18 @@
+'Log files:
+/Users/fynnfroehlich/colocation/.npm-cache/_logs/2025-10-30T17_33_27_021Z-debug-0.log
+
+# npm resolution error report
+
+While resolving: vite_react_shadcn_ts@0.0.0
+Found: react-leaflet@5.0.0
+node_modules/react-leaflet
+  react-leaflet@"^5.0.0" from the root project
+
+Could not resolve dependency:
+peer react-leaflet@"^4.0.0" from react-leaflet-cluster@3.1.1
+node_modules/react-leaflet-cluster
+  react-leaflet-cluster@"*" from the root project
+
+Fix the upstream dependency conflict, or retry
+this command with --force or --legacy-peer-deps
+to accept an incorrect (and potentially broken) dependency resolution.
