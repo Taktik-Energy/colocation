@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
+import { useNavigate } from 'react-router-dom';
 import * as L from 'leaflet';
 import { Icon, LatLngBounds } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -38,6 +39,7 @@ const debounce = (fn: (...args: any[]) => void, ms: number) => {
 };
 
 const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
+  const navigate = useNavigate();
   const [minMax, setMinMax] = useState<[number, number]>([10000, 500000]);
   const [tempRange, setTempRange] = useState<[number, number]>([10000, 500000]);
   const [statuses, setStatuses] = useState<Record<StatusKey, boolean>>({ operating: true, planned: true });
@@ -169,9 +171,12 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
           const p = projectById.get(projectId);
           if (!p) return null;
           return (
-            <Marker key={p.id} position={[p.lat, p.lon] as [number, number]}>
+            <Marker 
+              key={p.id} 
+              position={[p.lat, p.lon] as [number, number]}
+            >
               <Popup>
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <div className="font-semibold">{p.name}</div>
                   <div className="text-sm">{p.capacity_kwp?.toLocaleString()} kWp</div>
                   <div className="text-sm">Status: {p.status || '—'}</div>
@@ -179,6 +184,12 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
                   {!p.completion_date && p.planned_date && <div className="text-sm">Planned commissioning: {p.planned_date}</div>}
                   {p.operator_name && <div className="text-sm">Operator: {p.operator_name}</div>}
                   {p.grid_operator_name && <div className="text-sm">Grid: {p.grid_operator_name}</div>}
+                  <button
+                    onClick={() => navigate(`/project/${p.id}`)}
+                    className="mt-2 text-sm text-primary hover:underline font-medium"
+                  >
+                    View Details →
+                  </button>
                 </div>
               </Popup>
             </Marker>

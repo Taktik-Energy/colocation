@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const url = (import.meta as any).env.VITE_SUPABASE_URL || (import.meta as any).env.SUPABASE_URL;
-const anonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY || (import.meta as any).env.VSUPABASE_ANON_KEY;
+const anonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY || (import.meta as any).env.SUPABASE_ANON_KEY;
 
 if (!url || !anonKey) {
   // Fail fast to surface misconfigured env in client builds
@@ -26,6 +26,17 @@ export interface PvProject {
   lon: number;
   lat: number;
   eeg_bucket?: 'eeg_awarded' | 'merchant_likely' | null;
+  // Optional fields that may exist in Supabase
+  address_line1?: string | null;
+  address_line2?: string | null;
+  postal_code?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  // Optional EEG details if present
+  eeg_award_id?: string | null;
+  eeg_auction_round?: string | null;
+  eeg_reference_price_ct_per_kwh?: number | null;
 }
 
 export interface PvSearchParams {
@@ -42,6 +53,21 @@ export async function pvMapSearch(params: PvSearchParams) {
   const { data, error } = await supabase.rpc('pv_map_search_v2', params as any);
   if (error) throw error;
   return (data || []) as PvProject[];
+}
+
+export async function getProjectById(id: string): Promise<PvProject | null> {
+  const { data, error } = await supabase
+    .from('pv_projects')
+    .select('*')
+    .eq('id', id)
+    .single();
+  
+  if (error) {
+    console.error('Error fetching project:', error);
+    return null;
+  }
+  
+  return data as PvProject;
 }
 
 

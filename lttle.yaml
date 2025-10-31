@@ -1,0 +1,21 @@
+app:
+  namespace: colocation
+  name: frontend
+  build: auto
+  resources:
+    cpu: 1
+    memory: 256
+  mode:
+    flash:
+      strategy:
+        listen-on-port: 5173
+  environment:
+    PORT: '5173'
+    # Build-time and runtime env vars (Vite will use these during build)
+    VITE_SUPABASE_ANON_KEY: ${{ env.VITE_SUPABASE_ANON_KEY }}
+    VITE_SUPABASE_URL: ${{ env.VITE_SUPABASE_URL }}
+  expose:
+    http:
+      port: 5173
+      external:
+        protocol: https
