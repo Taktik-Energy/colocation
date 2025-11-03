@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getProjectById, PvProject } from '../lib/supabase';
+import { getProjectById, PvProject, fetchColocationsByPvId, PvBessPair } from '../lib/supabase';
 import Header from '../components/Header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -14,6 +14,8 @@ const ProjectDetail = () => {
   const navigate = useNavigate();
   const [project, setProject] = useState<PvProject | null>(null);
   const [loading, setLoading] = useState(true);
+  const [bessPairs, setBessPairs] = useState<PvBessPair[] | null>(null);
+  const [loadingBess, setLoadingBess] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -40,6 +42,23 @@ const ProjectDetail = () => {
 
     fetchProject();
   }, [id, navigate]);
+
+  useEffect(() => {
+    if (!id) return;
+    const fetchBess = async () => {
+      setLoadingBess(true);
+      try {
+        const pairs = await fetchColocationsByPvId(id);
+        setBessPairs(pairs);
+      } catch (e) {
+        console.error('Error loading BESS colocation:', e);
+        setBessPairs([]);
+      } finally {
+        setLoadingBess(false);
+      }
+    };
+    fetchBess();
+  }, [id]);
 
   if (loading) {
     return (
@@ -174,6 +193,81 @@ const ProjectDetail = () => {
             </div>
           </CardContent>
         </Card>
+
+        {(loadingBess || (bessPairs && bessPairs.length > 0)) && (
+          <Card className="mb-6">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-primary" />
+                  <CardTitle>Co-located Battery Storage</CardTitle>
+                </div>
+                {loadingBess && (
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-foreground" />
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {bessPairs && bessPairs.length === 0 && !loadingBess && (
+                <div className="text-sm text-muted-foreground">No co-located BESS found for this PV project.</div>
+              )}
+              {bessPairs && bessPairs.length > 0 && (
+                <div className="space-y-4">
+                  {bessPairs.map((pair) => (
+                    <div key={`${pair.pv_id}-${pair.bess_id}`} className="rounded-lg border border-border p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Match</div>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${pair.match_type === 'lokation_mastr' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {pair.match_type === 'lokation_mastr' ? 'Same Lokation' : '≈300 m'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <div className="text-muted-foreground">BESS Name</div>
+                          <div className="font-medium">{pair.bess_name || '—'}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Distance</div>
+                          <div className="font-medium">{Math.round(pair.distance_m)} m</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Power</div>
+                          <div className="font-medium">{pair.bess_power_kw?.toLocaleString() || '—'} kW</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Energy</div>
+                          <div className="font-medium">{pair.bess_energy_kwh?.toLocaleString() || '—'} kWh</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Status</div>
+                          <div className="font-medium capitalize">{pair.bess_status || '—'}</div>
+                        </div>
+                        {pair.bess_commissioning_date && (
+                          <div>
+                            <div className="text-muted-foreground">Commissioning</div>
+                            <div className="font-medium">{new Date(pair.bess_commissioning_date).toLocaleDateString()}</div>
+                          </div>
+                        )}
+                        {pair.bess_operator_name && (
+                          <div>
+                            <div className="text-muted-foreground">Operator</div>
+                            <div className="font-medium">{pair.bess_operator_name}</div>
+                          </div>
+                        )}
+                        {pair.bess_grid_operator_name && (
+                          <div>
+                            <div className="text-muted-foreground">Grid Operator</div>
+                            <div className="font-medium">{pair.bess_grid_operator_name}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {(project.address_line1 || project.city || project.postal_code || project.country) && (
           <Card className="mb-6">
@@ -350,10 +444,7 @@ const ProjectDetail = () => {
                   <div className="text-lg font-semibold">Joint Venture or Fixed Compensation</div>
                 </div>
               </div>
-              <div className="text-sm">
-                <div className="text-muted-foreground">Colocation Contact</div>
-                <div className="font-medium">energy-partnerships@example.com</div>
-              </div>
+              {/* Removed mock colocation contact details */}
             </div>
           </CardContent>
         </Card>
@@ -393,20 +484,34 @@ const ProjectDetail = () => {
           </Card>
         )}
 
-        {(project.contact_email || project.contact_phone) && (
+        {(project.contact_name || project.contact_role || project.contact_email || project.general_email || project.contact_phone) && (
           <Card>
             <CardHeader>
               <CardTitle>Contact Information</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
+                {(project.contact_name || project.contact_role) && (
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-full bg-primary/10 p-2">
+                      <Building2 className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Primary Contact</p>
+                      <div className="text-lg font-semibold">
+                        {project.contact_name || '—'}{project.contact_role ? ` • ${project.contact_role}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {project.contact_email && (
                   <div className="flex items-center gap-3">
                     <div className="rounded-full bg-primary/10 p-2">
                       <Mail className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-muted-foreground">Email</p>
+                      <p className="text-sm font-medium text-muted-foreground">Contact Email</p>
                       <a
                         href={`mailto:${project.contact_email}`}
                         className="text-lg font-semibold hover:underline"
@@ -416,6 +521,24 @@ const ProjectDetail = () => {
                     </div>
                   </div>
                 )}
+
+                {project.general_email && (
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-full bg-primary/10 p-2">
+                      <Mail className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">General Email</p>
+                      <a
+                        href={`mailto:${project.general_email}`}
+                        className="text-lg font-semibold hover:underline"
+                      >
+                        {project.general_email}
+                      </a>
+                    </div>
+                  </div>
+                )}
+                
 
                 {project.contact_phone && (
                   <div className="flex items-center gap-3">

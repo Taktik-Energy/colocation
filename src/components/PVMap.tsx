@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, Polyline } from 'react-leaflet';
 import { useNavigate } from 'react-router-dom';
 import * as L from 'leaflet';
 import { Icon, LatLngBounds } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { pvMapSearch, PvProject } from '../lib/supabase';
+import { pvMapSearch, PvProject, fetchPvBessColocations, PvBessPair } from '../lib/supabase';
 import { Checkbox } from './ui/checkbox';
 import { Slider } from './ui/slider';
 import Supercluster from 'supercluster';
@@ -48,6 +48,11 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
   const [dateTo, setDateTo] = useState<string>('');
   const [projects, setProjects] = useState<PvProject[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [showBess, setShowBess] = useState<boolean>(false);
+  const [bessPairs, setBessPairs] = useState<PvBessPair[]>([]);
+  const [loadingBess, setLoadingBess] = useState<boolean>(false);
+  const [onlyPvWithoutBess, setOnlyPvWithoutBess] = useState<boolean>(false);
+  const [onlyContactEnriched, setOnlyContactEnriched] = useState<boolean>(false);
   const latestBoundsRef = useRef<LatLngBounds | null>(null);
   const latestZoomRef = useRef<number>(6);
 
@@ -87,6 +92,22 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
 
   const debouncedFetch = useMemo(() => debounce(fetchData, 400), [fetchData]);
 
+  const fetchBess = useCallback(async () => {
+    if (!showBess && !onlyPvWithoutBess) return;
+    setLoadingBess(true);
+    try {
+      const data = await fetchPvBessColocations();
+      setBessPairs(data || []);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+    } finally {
+      setLoadingBess(false);
+    }
+  }, [showBess, onlyPvWithoutBess]);
+
+  const debouncedFetchBess = useMemo(() => debounce(fetchBess, 300), [fetchBess]);
+
   const handleMapIdle = useCallback((bounds: LatLngBounds, zoom: number) => {
     latestBoundsRef.current = bounds;
     latestZoomRef.current = zoom;
@@ -97,6 +118,18 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
     debouncedFetch();
   }, [minMax, activeStatuses, activeEegBuckets, dateFrom, dateTo]);
 
+  useEffect(() => {
+    if (showBess || onlyPvWithoutBess) {
+      debouncedFetchBess();
+    }
+  }, [showBess, onlyPvWithoutBess]);
+
+  const colocatedPvIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const pair of bessPairs) s.add(pair.pv_id);
+    return s;
+  }, [bessPairs]);
+
   // keep tempRange in sync if minMax changes externally
   useEffect(() => {
     setTempRange(minMax);
@@ -105,13 +138,19 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
   // Build supercluster index when projects change
   type PointFeature = GeoJSON.Feature<GeoJSON.Point, { cluster: false; projectId: string }>;
 
+  const filteredProjects = useMemo(() => {
+    const base = onlyPvWithoutBess ? projects.filter((p) => !colocatedPvIds.has(p.id)) : projects;
+    if (!onlyContactEnriched) return base;
+    return base.filter((p) => Boolean(p.contact_name || p.contact_email || p.contact_role || p.general_email));
+  }, [projects, onlyPvWithoutBess, colocatedPvIds, onlyContactEnriched]);
+
   const features: PointFeature[] = useMemo(() => (
-    projects.map((p) => ({
+    filteredProjects.map((p) => ({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
       properties: { cluster: false, projectId: p.id },
     }))
-  ), [projects]);
+  ), [filteredProjects]);
 
   const index = useMemo(() => new Supercluster<{ projectId: string }>({ radius: 60, maxZoom: 16 }).load(features), [features]);
 
@@ -133,9 +172,9 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
 
   const projectById = useMemo(() => {
     const m = new Map<string, PvProject>();
-    for (const p of projects) m.set(p.id, p);
+    for (const p of filteredProjects) m.set(p.id, p);
     return m;
-  }, [projects]);
+  }, [filteredProjects]);
 
   const ClustersRenderer: React.FC = () => {
     const map = useMap();
@@ -199,6 +238,59 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
     );
   };
 
+  const BessRenderer: React.FC = () => {
+    if (!showBess || !bessPairs.length) return null;
+
+    const bessIcon = L.divIcon({
+      html: '<div style="background:#8b5cf6;color:white;border-radius:9999px;display:flex;align-items:center;justify-content:center;width:18px;height:18px;font-size:10px;font-weight:700;">B</div>',
+      className: 'bess-marker',
+      iconSize: [18, 18],
+    });
+
+    return (
+      <>
+        {bessPairs.map((pair) => (
+          <React.Fragment key={`${pair.pv_id}-${pair.bess_id}`}>
+            <Polyline
+              positions={[[pair.pv_lat, pair.pv_lon] as [number, number], [pair.bess_lat, pair.bess_lon] as [number, number]]}
+              pathOptions={{ color: '#8b5cf6', weight: 1, opacity: 0.6 }}
+            />
+            <Marker
+              position={[pair.bess_lat, pair.bess_lon] as [number, number]}
+              icon={bessIcon}
+            >
+              <Popup>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Match</div>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${pair.match_type === 'lokation_mastr' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {pair.match_type === 'lokation_mastr' ? 'Same Lokation' : '≈300 m'}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="font-semibold">PV: {pair.pv_name || '—'}</div>
+                    <div className="text-sm">{pair.pv_capacity_kwp?.toLocaleString() || '—'} kWp • Status: {pair.pv_status || '—'}</div>
+                    {pair.pv_commissioning_date && <div className="text-sm">Commissioning: {pair.pv_commissioning_date}</div>}
+                    {pair.pv_operator_name && <div className="text-sm">Operator: {pair.pv_operator_name}</div>}
+                    {pair.pv_grid_operator_name && <div className="text-sm">Grid: {pair.pv_grid_operator_name}</div>}
+                  </div>
+                  <div>
+                    <div className="font-semibold">BESS: {pair.bess_name || '—'}</div>
+                    <div className="text-sm">{pair.bess_power_kw?.toLocaleString() || '—'} kW • {pair.bess_energy_kwh?.toLocaleString() || '—'} kWh • Status: {pair.bess_status || '—'}</div>
+                    {pair.bess_commissioning_date && <div className="text-sm">Commissioning: {pair.bess_commissioning_date}</div>}
+                    {pair.bess_operator_name && <div className="text-sm">Operator: {pair.bess_operator_name}</div>}
+                    {pair.bess_grid_operator_name && <div className="text-sm">Grid: {pair.bess_grid_operator_name}</div>}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Distance: {Math.round(pair.distance_m)} m</div>
+                </div>
+              </Popup>
+            </Marker>
+          </React.Fragment>
+        ))}
+      </>
+    );
+  };
+
   return (
     <div className={fullScreen ? "w-screen h-screen relative" : "w-full h-[600px] relative rounded-lg border border-border shadow-sm"}>
       <div className="absolute inset-0">
@@ -206,6 +298,7 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
           <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           <MapEventBinder onIdle={(b, z) => { handleMapIdle(b, z); recomputeClusters(); }} />
           <ClustersRenderer />
+          <BessRenderer />
         </MapContainer>
       </div>
 
@@ -234,6 +327,32 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
               <span className="capitalize">{k}</span>
             </label>
           ))}
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-sm font-medium">BESS</div>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={showBess} onCheckedChange={(v) => setShowBess(Boolean(v))} />
+            <span>Show co-located BESS</span>
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={onlyPvWithoutBess} onCheckedChange={(v) => setOnlyPvWithoutBess(Boolean(v))} />
+            <span>Only PV without BESS</span>
+          </label>
+          {loadingBess && showBess && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-foreground" />
+              Loading BESS…
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-sm font-medium">Contacts</div>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={onlyContactEnriched} onCheckedChange={(v) => setOnlyContactEnriched(Boolean(v))} />
+            <span>Contact enriched</span>
+          </label>
         </div>
 
         <div className="space-y-2">

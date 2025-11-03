@@ -21,7 +21,11 @@ export interface PvProject {
   planned_date: string | null;
   operator_name: string | null;
   grid_operator_name: string | null;
+  // Contact enrichment fields
+  general_email?: string | null;
+  contact_name?: string | null;
   contact_email?: string | null;
+  contact_role?: string | null;
   contact_phone?: string | null;
   lon: number;
   lat: number;
@@ -39,6 +43,20 @@ export interface PvProject {
   eeg_reference_price_ct_per_kwh?: number | null;
 }
 
+export type PvBessPair = {
+  pv_id: string; pv_mastr_unit_id: string; pv_name: string | null;
+  pv_capacity_kwp: number | null; pv_status: string | null;
+  pv_commissioning_date: string | null; pv_operator_name: string | null;
+  pv_grid_operator_name: string | null; pv_grid_operator_mastr: string | null;
+  pv_lon: number; pv_lat: number;
+  bess_id: string; bess_mastr_unit_id: string; bess_name: string | null;
+  bess_power_kw: number | null; bess_energy_kwh: number | null;
+  bess_status: string | null; bess_commissioning_date: string | null;
+  bess_operator_name: string | null; bess_grid_operator_name: string | null;
+  bess_grid_operator_mastr: string | null; bess_lon: number; bess_lat: number;
+  distance_m: number; match_type: 'lokation_mastr' | 'proximity_300m';
+};
+
 export interface PvSearchParams {
   min_kwp: number | null;
   max_kwp: number | null;
@@ -53,6 +71,23 @@ export async function pvMapSearch(params: PvSearchParams) {
   const { data, error } = await supabase.rpc('pv_map_search_v2', params as any);
   if (error) throw error;
   return (data || []) as PvProject[];
+}
+
+export async function fetchPvBessColocations(): Promise<PvBessPair[]> {
+  const { data, error } = await supabase
+    .from('pv_bess_colocations')
+    .select('*');
+  if (error) throw error;
+  return (data || []) as PvBessPair[];
+}
+
+export async function fetchColocationsByPvId(pvId: string): Promise<PvBessPair[]> {
+  const { data, error } = await supabase
+    .from('pv_bess_colocations')
+    .select('*')
+    .eq('pv_id', pvId);
+  if (error) throw error;
+  return (data || []) as PvBessPair[];
 }
 
 export async function getProjectById(id: string): Promise<PvProject | null> {
