@@ -136,6 +136,18 @@ const ProjectDetail = () => {
     }
   };
 
+  // Build normalized address lines from varying schemas
+  const addressLine1 = (
+    (project as any).street
+      ? `${(project as any).street}${(project as any).house_no ? ` ${(project as any).house_no}` : ''}`
+      : project.address_line1 || null
+  );
+  const addressLine2 = project.address_line2 || null;
+  const postal = (project as any).postcode || project.postal_code || '';
+  const city = project.city || '';
+  const linePostalCity = (postal || city) ? `${postal ? `${postal} ` : ''}${city}` : null;
+  const region = [project.state, (project as any).country].filter(Boolean).join(', ');
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -145,12 +157,20 @@ const ProjectDetail = () => {
           Back to Map
         </Button>
 
+        <h1 className="text-3xl md:text-4xl font-bold mb-4">{project.name}</h1>
+
         <Card className="mb-6">
           <CardHeader>
             <div className="flex items-start justify-between">
               <div>
-                <CardTitle className="text-3xl mb-2">{project.name}</CardTitle>
+                <CardTitle className="text-2xl mb-2">Overview</CardTitle>
                 <div className="text-muted-foreground text-base">
+                  <div className="text-foreground">
+                    <span className="font-medium">Project name:</span> {project.name}
+                  </div>
+                  {project.display_name && (
+                    <div className="mt-1 text-foreground font-medium">{project.display_name}</div>
+                  )}
                   <div className="flex items-center gap-2 mt-2">
                     <MapPin className="h-4 w-4" />
                     <span>
@@ -256,7 +276,7 @@ const ProjectDetail = () => {
           </Card>
         )}
 
-        {(project.address_line1 || project.city || project.postal_code || project.country) && (
+        {(addressLine1 || addressLine2 || linePostalCity || region) && (
           <Card className="mb-6">
             <CardHeader>
               <div className="flex items-center gap-2">
@@ -266,20 +286,10 @@ const ProjectDetail = () => {
             </CardHeader>
             <CardContent>
               <div className="text-sm leading-6">
-                {project.address_line1 && <div>{project.address_line1}</div>}
-                {project.address_line2 && <div>{project.address_line2}</div>}
-                {(project.postal_code || project.city) && (
-                  <div>
-                    {project.postal_code ? `${project.postal_code} ` : ''}
-                    {project.city || ''}
-                  </div>
-                )}
-                {(project.state || project.country) && (
-                  <div>
-                    {project.state ? `${project.state} ` : ''}
-                    {project.country || ''}
-                  </div>
-                )}
+                {addressLine1 && <div>{addressLine1}</div>}
+                {addressLine2 && <div>{addressLine2}</div>}
+                {linePostalCity && <div>{linePostalCity}</div>}
+                {region && <div>{region}</div>}
               </div>
             </CardContent>
           </Card>
@@ -324,117 +334,7 @@ const ProjectDetail = () => {
           </Card>
         )}
 
-        {/* Mock: Production Profile */}
-        <Card className="mb-6">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-primary" />
-              <CardTitle>Production Profile (Typical Day)</CardTitle>
-              <CardDescription>Illustrative curve showing average solar output over a day</CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer
-              config={{ production: { label: 'Power (kW)', color: 'hsl(var(--primary))' } }}
-              className="w-full h-[260px]"
-            >
-              {(() => {
-                // Generate varied daily production profiles to avoid obvious mocks
-                const hash = (s: string) => s.split('').reduce((a, c) => (a + c.charCodeAt(0)) % 997, 0);
-                const variantIdx = hash(project.id) % 3; // 0,1,2 → choose variant
-
-                // Latitude-based amplitude and day length
-                const lat = project.lat;
-                const amplitude = lat >= 52 ? 850 : lat <= 48 ? 1200 : 1000;
-                const sunrise = lat >= 52 ? 7 : lat <= 48 ? 5 : 6;
-                const sunset = lat >= 52 ? 19 : lat <= 48 ? 21 : 20;
-                const dayLen = Math.max(1, sunset - sunrise);
-
-                const curve = (h: number) => {
-                  // Map hour into [0, PI]
-                  const t = (h - sunrise) / dayLen;
-                  if (t <= 0 || t >= 1) return 0;
-                  let base = Math.sin(Math.PI * t);
-                  // Variants: 0 clear, 1 cloudy-noon-dip, 2 late-peak skew
-                  if (variantIdx === 1) {
-                    // Noon dip ~25%
-                    const dip = 0.25 * Math.exp(-Math.pow(h - 12, 2) / 10);
-                    base = base * (1 - dip);
-                  } else if (variantIdx === 2) {
-                    // Shift peak later by gently skewing right
-                    const skew = 0.85 + 0.3 * Math.min(1, Math.max(0, (h - 12) / 6));
-                    base = Math.pow(base, 0.9) * skew;
-                  }
-                  // Tiny noise +/-5%
-                  const noise = 1 + (((hash(`${project.id}-${h}`) % 11) - 5) / 100);
-                  return Math.max(0, Math.round(amplitude * base * noise));
-                };
-
-                const data = Array.from({ length: 24 }, (_, h) => ({
-                  hour: `${h}:00`,
-                  production: curve(h),
-                }));
-
-                return (
-                  <LineChart data={data}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="hour" tick={{ fontSize: 12 }} interval={2} />
-                    <YAxis tick={{ fontSize: 12 }} />
-                    <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-                    <Line type="monotone" dataKey="production" stroke="var(--color-production)" strokeWidth={2} dot={false} />
-                  </LineChart>
-                );
-              })()}
-            </ChartContainer>
-          </CardContent>
-        </Card>
-
-        {/* Mock: Grid Node Info */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Grid Node Information</CardTitle>
-            <CardDescription>Static example values for illustration</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <div className="text-sm text-muted-foreground">Max Node Capacity</div>
-                <div className="text-lg font-semibold">120 MW</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Used Capacity</div>
-                <div className="text-lg font-semibold">86 MW</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Downstream Capacity Available</div>
-                <div className="text-lg font-semibold">Yes</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Mock: Colocation Info */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Colocation Information</CardTitle>
-            <CardDescription>Static example values for exploration</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <div className="text-sm text-muted-foreground">Open to Colocate</div>
-                  <div className="text-lg font-semibold">Yes</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Preferred Structure</div>
-                  <div className="text-lg font-semibold">Joint Venture or Fixed Compensation</div>
-                </div>
-              </div>
-              {/* Removed mock colocation contact details */}
-            </div>
-          </CardContent>
-        </Card>
+        
 
         {(project.operator_name || project.grid_operator_name) && (
           <Card className="mb-6">
@@ -612,6 +512,104 @@ const ProjectDetail = () => {
             </CardContent>
           </Card>
         )}
+
+        {/* Mock: Grid Node Info */}
+        <Card className="mb-6 mt-6">
+          <CardHeader>
+            <CardTitle>Grid Node Information</CardTitle>
+            <CardDescription>Preview, comming soon</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <div className="text-sm text-muted-foreground">Max Node Capacity</div>
+                <div className="text-lg font-semibold">120 MW</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Used Capacity</div>
+                <div className="text-lg font-semibold">86 MW</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Downstream Capacity Available</div>
+                <div className="text-lg font-semibold">Yes</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Mock: Colocation Info */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Colocation Information</CardTitle>
+            <CardDescription>Preview, coming soon</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <div className="text-sm text-muted-foreground">Open to Colocate</div>
+                  <div className="text-lg font-semibold">Yes</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Preferred Structure</div>
+                  <div className="text-lg font-semibold">Joint Venture or Fixed Compensation</div>
+                </div>
+              </div>
+              {/* Removed mock colocation contact details */}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Mock: Production Profile */}
+        <Card className="mb-6">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-primary" />
+              <CardTitle>Production Profile (Typical Day)</CardTitle>
+              <CardDescription>Preview</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer
+              config={{ production: { label: 'Power (kW)', color: 'hsl(var(--primary))' } }}
+              className="w-full h-[260px]"
+            >
+              {(() => {
+                const hash = (s: string) => s.split('').reduce((a, c) => (a + c.charCodeAt(0)) % 997, 0);
+                const variantIdx = hash(project.id) % 3;
+                const lat = project.lat;
+                const amplitude = lat >= 52 ? 850 : lat <= 48 ? 1200 : 1000;
+                const sunrise = lat >= 52 ? 7 : lat <= 48 ? 5 : 6;
+                const sunset = lat >= 52 ? 19 : lat <= 48 ? 21 : 20;
+                const dayLen = Math.max(1, sunset - sunrise);
+                const curve = (h: number) => {
+                  const t = (h - sunrise) / dayLen;
+                  if (t <= 0 || t >= 1) return 0;
+                  let base = Math.sin(Math.PI * t);
+                  if (variantIdx === 1) {
+                    const dip = 0.25 * Math.exp(-Math.pow(h - 12, 2) / 10);
+                    base = base * (1 - dip);
+                  } else if (variantIdx === 2) {
+                    const skew = 0.85 + 0.3 * Math.min(1, Math.max(0, (h - 12) / 6));
+                    base = Math.pow(base, 0.9) * skew;
+                  }
+                  const noise = 1 + (((hash(`${project.id}-${h}`) % 11) - 5) / 100);
+                  return Math.max(0, Math.round(amplitude * base * noise));
+                };
+                const data = Array.from({ length: 24 }, (_, h) => ({ hour: `${h}:00`, production: curve(h) }));
+                return (
+                  <LineChart data={data}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="hour" tick={{ fontSize: 12 }} interval={2} />
+                    <YAxis tick={{ fontSize: 12 }} />
+                    <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                    <Line type="monotone" dataKey="production" stroke="var(--color-production)" strokeWidth={2} dot={false} />
+                  </LineChart>
+                );
+              })()}
+            </ChartContainer>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

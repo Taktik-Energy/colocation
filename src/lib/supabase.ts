@@ -15,6 +15,7 @@ export const supabase = createClient(url as string, anonKey as string, {
 export interface PvProject {
   id: string;
   name: string;
+  display_name?: string | null;
   capacity_kwp: number;
   status: 'operating' | 'connected' | 'planned';
   completion_date: string | null;
@@ -30,10 +31,16 @@ export interface PvProject {
   lat: number;
   eeg_bucket?: 'eeg_awarded' | 'merchant_likely' | null;
   // Optional fields that may exist in Supabase
+  // Legacy/alternative address shapes
   address_line1?: string | null;
   address_line2?: string | null;
-  postal_code?: string | null;
+  postal_code?: string | null; // legacy naming
+  postcode?: string | null;    // canonical in current schema
+  street?: string | null;
+  house_no?: string | null;
   city?: string | null;
+  municipality?: string | null;
+  district?: string | null;
   state?: string | null;
   country?: string | null;
   // Optional EEG details if present
