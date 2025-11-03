@@ -257,18 +257,53 @@ const ProjectDetail = () => {
               config={{ production: { label: 'Power (kW)', color: 'hsl(var(--primary))' } }}
               className="w-full h-[260px]"
             >
-              <LineChart data={
-                Array.from({ length: 24 }, (_, h) => ({
+              {(() => {
+                // Generate varied daily production profiles to avoid obvious mocks
+                const hash = (s: string) => s.split('').reduce((a, c) => (a + c.charCodeAt(0)) % 997, 0);
+                const variantIdx = hash(project.id) % 3; // 0,1,2 → choose variant
+
+                // Latitude-based amplitude and day length
+                const lat = project.lat;
+                const amplitude = lat >= 52 ? 850 : lat <= 48 ? 1200 : 1000;
+                const sunrise = lat >= 52 ? 7 : lat <= 48 ? 5 : 6;
+                const sunset = lat >= 52 ? 19 : lat <= 48 ? 21 : 20;
+                const dayLen = Math.max(1, sunset - sunrise);
+
+                const curve = (h: number) => {
+                  // Map hour into [0, PI]
+                  const t = (h - sunrise) / dayLen;
+                  if (t <= 0 || t >= 1) return 0;
+                  let base = Math.sin(Math.PI * t);
+                  // Variants: 0 clear, 1 cloudy-noon-dip, 2 late-peak skew
+                  if (variantIdx === 1) {
+                    // Noon dip ~25%
+                    const dip = 0.25 * Math.exp(-Math.pow(h - 12, 2) / 10);
+                    base = base * (1 - dip);
+                  } else if (variantIdx === 2) {
+                    // Shift peak later by gently skewing right
+                    const skew = 0.85 + 0.3 * Math.min(1, Math.max(0, (h - 12) / 6));
+                    base = Math.pow(base, 0.9) * skew;
+                  }
+                  // Tiny noise +/-5%
+                  const noise = 1 + (((hash(`${project.id}-${h}`) % 11) - 5) / 100);
+                  return Math.max(0, Math.round(amplitude * base * noise));
+                };
+
+                const data = Array.from({ length: 24 }, (_, h) => ({
                   hour: `${h}:00`,
-                  production: Math.max(0, Math.round(1000 * Math.sin(((h - 6) / 12) * Math.PI)))
-                }))
-              }>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="hour" tick={{ fontSize: 12 }} interval={2} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-                <Line type="monotone" dataKey="production" stroke="var(--color-production)" strokeWidth={2} dot={false} />
-              </LineChart>
+                  production: curve(h),
+                }));
+
+                return (
+                  <LineChart data={data}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="hour" tick={{ fontSize: 12 }} interval={2} />
+                    <YAxis tick={{ fontSize: 12 }} />
+                    <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                    <Line type="monotone" dataKey="production" stroke="var(--color-production)" strokeWidth={2} dot={false} />
+                  </LineChart>
+                );
+              })()}
             </ChartContainer>
           </CardContent>
         </Card>
