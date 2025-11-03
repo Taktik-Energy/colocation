@@ -17,7 +17,7 @@ const Home = () => (
                 PV Projects Map
               </h2>
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                Explore PV plants ≥10 MWp. Filter by size, status, and completion date.
+                Explore existing PV plants for co-location. Filter by size, status, and existing BESS projects.
               </p>
             </div>
             <PVMap fullScreen={false} />

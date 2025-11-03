@@ -26,7 +26,6 @@ export interface PvProject {
   contact_name?: string | null;
   contact_email?: string | null;
   contact_role?: string | null;
-  contact_phone?: string | null;
   lon: number;
   lat: number;
   eeg_bucket?: 'eeg_awarded' | 'merchant_likely' | null;
@@ -50,7 +49,12 @@ export type PvBessPair = {
   pv_grid_operator_name: string | null; pv_grid_operator_mastr: string | null;
   pv_lon: number; pv_lat: number;
   bess_id: string; bess_mastr_unit_id: string; bess_name: string | null;
-  bess_power_kw: number | null; bess_energy_kwh: number | null;
+  // Canonical columns from view
+  bess_kw: number | null; bess_kwh: number | null;
+  // Back-compat optional aliases that may exist on earlier views
+  bess_power_kw?: number | null; bess_energy_kwh?: number | null;
+  // Operator naming variants
+  bess_operator?: string | null;
   bess_status: string | null; bess_commissioning_date: string | null;
   bess_operator_name: string | null; bess_grid_operator_name: string | null;
   bess_grid_operator_mastr: string | null; bess_lon: number; bess_lat: number;
@@ -71,6 +75,16 @@ export async function pvMapSearch(params: PvSearchParams) {
   const { data, error } = await supabase.rpc('pv_map_search_v2', params as any);
   if (error) throw error;
   return (data || []) as PvProject[];
+}
+
+export async function fetchProjectContacts(ids: string[]): Promise<Pick<PvProject, 'id' | 'general_email' | 'contact_name' | 'contact_email' | 'contact_role'>[]> {
+  if (!ids.length) return [];
+  const { data, error } = await supabase
+    .from('pv_projects')
+    .select('id, general_email, contact_name, contact_email, contact_role')
+    .in('id', ids);
+  if (error) throw error;
+  return (data || []) as any;
 }
 
 export async function fetchPvBessColocations(): Promise<PvBessPair[]> {

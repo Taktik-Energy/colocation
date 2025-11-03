@@ -5,8 +5,7 @@ const About = () => {
         <div className="max-w-3xl space-y-4">
           <h2 className="text-2xl md:text-3xl font-semibold tracking-tight">About</h2>
           <p className="text-muted-foreground">
-            This project provides a lightweight map of Germany using Leaflet. You can place points and lines
-            by coordinates. The sample dataset has been cleared so you can plug in your own data.
+           Co-location opportunities and enrichment are constantly expanded.
           </p>
         </div>
       </div>

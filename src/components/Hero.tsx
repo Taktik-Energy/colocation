@@ -6,7 +6,7 @@ const Hero = () => {
           Germany's Grid Map
         </h1>
         <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto">
-          Explore a map of Germany and place objects by coordinates. All demo data has been removed.
+          Explore co-location opportunities
         </p>
         <div className="pt-2">
           <a href="#map" className="inline-block px-4 py-2 rounded bg-foreground text-background text-sm font-medium">

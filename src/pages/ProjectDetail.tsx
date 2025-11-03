@@ -100,6 +100,29 @@ const ProjectDetail = () => {
     return `${kwp.toLocaleString()} kWp`;
   };
 
+  const formatNumber = (value: number | string | null | undefined) => {
+    if (value === null || value === undefined || value === '') return '—';
+    const n = Number(value);
+    if (Number.isNaN(n)) return '—';
+    return n.toLocaleString();
+  };
+
+  const formatPowerKWandMW = (value: number | string | null | undefined) => {
+    if (value === null || value === undefined || value === '') return '—';
+    const n = Number(value);
+    if (Number.isNaN(n)) return '—';
+    const mw = n / 1000;
+    return `${n.toLocaleString()} kW (${mw.toFixed(mw >= 10 ? 0 : 2)} MW)`;
+  };
+
+  const formatEnergyKWHandMWH = (value: number | string | null | undefined) => {
+    if (value === null || value === undefined || value === '') return '—';
+    const n = Number(value);
+    if (Number.isNaN(n)) return '—';
+    const mwh = n / 1000;
+    return `${n.toLocaleString()} kWh (${mwh.toFixed(mwh >= 10 ? 0 : 2)} MWh)`;
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'operating':
@@ -127,14 +150,14 @@ const ProjectDetail = () => {
             <div className="flex items-start justify-between">
               <div>
                 <CardTitle className="text-3xl mb-2">{project.name}</CardTitle>
-                <CardDescription className="text-base">
+                <div className="text-muted-foreground text-base">
                   <div className="flex items-center gap-2 mt-2">
                     <MapPin className="h-4 w-4" />
                     <span>
                       {project.lat.toFixed(4)}°N, {project.lon.toFixed(4)}°E
                     </span>
                   </div>
-                </CardDescription>
+                </div>
               </div>
               <span className={`px-3 py-1 rounded-full text-sm font-medium capitalize ${getStatusColor(project.status)}`}>
                 {project.status}
@@ -194,77 +217,41 @@ const ProjectDetail = () => {
           </CardContent>
         </Card>
 
-        {(loadingBess || (bessPairs && bessPairs.length > 0)) && (
+        {(project.eeg_bucket || project.eeg_award_id || project.eeg_auction_round || project.eeg_reference_price_ct_per_kwh) && (
           <Card className="mb-6">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Zap className="h-5 w-5 text-primary" />
-                  <CardTitle>Co-located Battery Storage</CardTitle>
-                </div>
-                {loadingBess && (
-                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-foreground" />
-                )}
+              <div className="flex items-center gap-2">
+                <Info className="h-5 w-5 text-primary" />
+                <CardTitle>EEG Information</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
-              {bessPairs && bessPairs.length === 0 && !loadingBess && (
-                <div className="text-sm text-muted-foreground">No co-located BESS found for this PV project.</div>
-              )}
-              {bessPairs && bessPairs.length > 0 && (
-                <div className="space-y-4">
-                  {bessPairs.map((pair) => (
-                    <div key={`${pair.pv_id}-${pair.bess_id}`} className="rounded-lg border border-border p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Match</div>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${pair.match_type === 'lokation_mastr' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                          {pair.match_type === 'lokation_mastr' ? 'Same Lokation' : '≈300 m'}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <div className="text-muted-foreground">BESS Name</div>
-                          <div className="font-medium">{pair.bess_name || '—'}</div>
-                        </div>
-                        <div>
-                          <div className="text-muted-foreground">Distance</div>
-                          <div className="font-medium">{Math.round(pair.distance_m)} m</div>
-                        </div>
-                        <div>
-                          <div className="text-muted-foreground">Power</div>
-                          <div className="font-medium">{pair.bess_power_kw?.toLocaleString() || '—'} kW</div>
-                        </div>
-                        <div>
-                          <div className="text-muted-foreground">Energy</div>
-                          <div className="font-medium">{pair.bess_energy_kwh?.toLocaleString() || '—'} kWh</div>
-                        </div>
-                        <div>
-                          <div className="text-muted-foreground">Status</div>
-                          <div className="font-medium capitalize">{pair.bess_status || '—'}</div>
-                        </div>
-                        {pair.bess_commissioning_date && (
-                          <div>
-                            <div className="text-muted-foreground">Commissioning</div>
-                            <div className="font-medium">{new Date(pair.bess_commissioning_date).toLocaleDateString()}</div>
-                          </div>
-                        )}
-                        {pair.bess_operator_name && (
-                          <div>
-                            <div className="text-muted-foreground">Operator</div>
-                            <div className="font-medium">{pair.bess_operator_name}</div>
-                          </div>
-                        )}
-                        {pair.bess_grid_operator_name && (
-                          <div>
-                            <div className="text-muted-foreground">Grid Operator</div>
-                            <div className="font-medium">{pair.bess_grid_operator_name}</div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                {project.eeg_bucket && (
+                  <div>
+                    <div className="text-muted-foreground">Category</div>
+                    <div className="font-medium capitalize">{project.eeg_bucket === 'eeg_awarded' ? 'EEG Awarded' : 'Merchant Likely'}</div>
+                  </div>
+                )}
+                {project.eeg_award_id && (
+                  <div>
+                    <div className="text-muted-foreground">Award ID</div>
+                    <div className="font-medium">{project.eeg_award_id}</div>
+                  </div>
+                )}
+                {project.eeg_auction_round && (
+                  <div>
+                    <div className="text-muted-foreground">Auction Round</div>
+                    <div className="font-medium">{project.eeg_auction_round}</div>
+                  </div>
+                )}
+                {typeof project.eeg_reference_price_ct_per_kwh === 'number' && (
+                  <div>
+                    <div className="text-muted-foreground">Reference Price</div>
+                    <div className="font-medium">{project.eeg_reference_price_ct_per_kwh.toFixed(2)} ct/kWh</div>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         )}
@@ -484,7 +471,7 @@ const ProjectDetail = () => {
           </Card>
         )}
 
-        {(project.contact_name || project.contact_role || project.contact_email || project.general_email || project.contact_phone) && (
+        {(project.contact_name || project.contact_role || project.contact_email || project.general_email) && (
           <Card>
             <CardHeader>
               <CardTitle>Contact Information</CardTitle>
@@ -540,23 +527,88 @@ const ProjectDetail = () => {
                 )}
                 
 
-                {project.contact_phone && (
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-full bg-primary/10 p-2">
-                      <Phone className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Phone</p>
-                      <a
-                        href={`tel:${project.contact_phone}`}
-                        className="text-lg font-semibold hover:underline"
-                      >
-                        {project.contact_phone}
-                      </a>
-                    </div>
-                  </div>
+                {/* No phone number in schema; removed */}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {(loadingBess || (bessPairs && bessPairs.length > 0)) && (
+          <Card className="mt-6">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-primary" />
+                  <CardTitle>Co-located Battery Storage</CardTitle>
+                </div>
+                {loadingBess && (
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-foreground" />
                 )}
               </div>
+            </CardHeader>
+            <CardContent>
+              {bessPairs && bessPairs.length === 0 && !loadingBess && (
+                <div className="text-sm text-muted-foreground">No co-located BESS found for this PV project.</div>
+              )}
+              {bessPairs && bessPairs.length > 0 && (
+                <div className="space-y-4">
+                  {bessPairs.map((pair) => {
+                    const anyPair: any = pair as any;
+                    const powerKw = (pair as any).bess_kw ?? pair.bess_power_kw ?? anyPair.bess_capacity_kw ?? anyPair.capacity_kw ?? anyPair.power_kw ?? anyPair.bess_power ?? null;
+                    const energyKwh = (pair as any).bess_kwh ?? pair.bess_energy_kwh ?? anyPair.capacity_kwh ?? anyPair.energy_kwh ?? anyPair.bess_energy ?? null;
+                    const operator = (pair as any).bess_operator ?? pair.bess_operator_name ?? null;
+                    return (
+                    <div key={`${pair.pv_id}-${pair.bess_id}`} className="rounded-lg border border-border p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Match</div>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${pair.match_type === 'lokation_mastr' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {pair.match_type === 'lokation_mastr' ? 'Same Lokation' : '≈300 m'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <div className="text-muted-foreground">BESS Name</div>
+                          <div className="font-medium">{pair.bess_name || '—'}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Distance</div>
+                          <div className="font-medium">{Math.round(pair.distance_m)} m</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Power</div>
+                          <div className="font-medium">{formatPowerKWandMW(powerKw)}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Energy</div>
+                          <div className="font-medium">{formatEnergyKWHandMWH(energyKwh)}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Status</div>
+                          <div className="font-medium capitalize">{pair.bess_status || '—'}</div>
+                        </div>
+                        {pair.bess_commissioning_date && (
+                          <div>
+                            <div className="text-muted-foreground">Commissioning</div>
+                            <div className="font-medium">{new Date(pair.bess_commissioning_date).toLocaleDateString()}</div>
+                          </div>
+                        )}
+                        {operator && (
+                          <div>
+                            <div className="text-muted-foreground">Operator</div>
+                            <div className="font-medium">{operator}</div>
+                          </div>
+                        )}
+                        {pair.bess_grid_operator_name && (
+                          <div>
+                            <div className="text-muted-foreground">Grid Operator</div>
+                            <div className="font-medium">{pair.bess_grid_operator_name}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );})}
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import * as L from 'leaflet';
 import { Icon, LatLngBounds } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { pvMapSearch, PvProject, fetchPvBessColocations, PvBessPair } from '../lib/supabase';
+import { pvMapSearch, PvProject, fetchPvBessColocations, PvBessPair, fetchProjectContacts } from '../lib/supabase';
 import { Checkbox } from './ui/checkbox';
 import { Slider } from './ui/slider';
 import Supercluster from 'supercluster';
@@ -53,6 +53,7 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
   const [loadingBess, setLoadingBess] = useState<boolean>(false);
   const [onlyPvWithoutBess, setOnlyPvWithoutBess] = useState<boolean>(false);
   const [onlyContactEnriched, setOnlyContactEnriched] = useState<boolean>(false);
+  const contactsMergedRef = useRef<boolean>(false);
   const latestBoundsRef = useRef<LatLngBounds | null>(null);
   const latestZoomRef = useRef<number>(6);
 
@@ -81,14 +82,40 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
         completed_before: dateTo || null,
         bbox,
       });
-      setProjects(data || []);
+      // Ensure contact fields are present for filtering (chunked to avoid IN limits)
+      if ((data?.length || 0) > 0) {
+        const ids = (data || []).map((p) => p.id);
+        const chunkSize = 500;
+        try {
+          contactsMergedRef.current = false;
+          const chunks: string[][] = [];
+          for (let i = 0; i < ids.length; i += chunkSize) chunks.push(ids.slice(i, i + chunkSize));
+          const results = await Promise.all(chunks.map((c) => fetchProjectContacts(c)));
+          const allContacts = ([] as any[]).concat(...results);
+          const contactMap = new Map(allContacts.map((c) => [c.id, c]));
+          const merged = (data || []).map((p) => Object.assign({}, p, contactMap.get(p.id)));
+          setProjects(merged);
+          contactsMergedRef.current = true;
+        } catch {
+          if (onlyContactEnriched) {
+            setProjects([]);
+            contactsMergedRef.current = false;
+          } else {
+            setProjects(data || []);
+            contactsMergedRef.current = true;
+          }
+        }
+      } else {
+        setProjects(data || []);
+        contactsMergedRef.current = true;
+      }
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, [minMax, activeStatuses, activeEegBuckets, dateFrom, dateTo]);
+  }, [minMax, activeStatuses, activeEegBuckets, dateFrom, dateTo, onlyContactEnriched]);
 
   const debouncedFetch = useMemo(() => debounce(fetchData, 400), [fetchData]);
 
@@ -107,6 +134,29 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
   }, [showBess, onlyPvWithoutBess]);
 
   const debouncedFetchBess = useMemo(() => debounce(fetchBess, 300), [fetchBess]);
+
+  const isValidString = (v?: string | null) => {
+    if (!v) return false;
+    const s = String(v).trim();
+    if (!s) return false;
+    const lower = s.toLowerCase();
+    if (['na', 'n/a', 'none', 'unknown', '-', 'null'].includes(lower)) return false;
+    return true;
+  };
+
+  const isValidEmail = (v?: string | null) => {
+    if (!isValidString(v)) return false;
+    const s = String(v).trim();
+    // Lightweight email check
+    return /.+@.+\..+/.test(s);
+  };
+
+  const hasContactEnrichment = (p: PvProject) => (
+    isValidEmail(p.contact_email) ||
+    isValidEmail(p.general_email) ||
+    isValidString(p.contact_name) ||
+    isValidString(p.contact_role)
+  );
 
   const handleMapIdle = useCallback((bounds: LatLngBounds, zoom: number) => {
     latestBoundsRef.current = bounds;
@@ -139,9 +189,10 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
   type PointFeature = GeoJSON.Feature<GeoJSON.Point, { cluster: false; projectId: string }>;
 
   const filteredProjects = useMemo(() => {
+    if (onlyContactEnriched && !contactsMergedRef.current) return [];
     const base = onlyPvWithoutBess ? projects.filter((p) => !colocatedPvIds.has(p.id)) : projects;
     if (!onlyContactEnriched) return base;
-    return base.filter((p) => Boolean(p.contact_name || p.contact_email || p.contact_role || p.general_email));
+    return base.filter((p) => hasContactEnrichment(p));
   }, [projects, onlyPvWithoutBess, colocatedPvIds, onlyContactEnriched]);
 
   const features: PointFeature[] = useMemo(() => (
@@ -169,6 +220,10 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
     // recompute on index changes and when bounds already known
     if (latestBoundsRef.current) recomputeClusters();
   }, [recomputeClusters]);
+
+  useEffect(() => {
+    if (latestBoundsRef.current) recomputeClusters();
+  }, [onlyContactEnriched, onlyPvWithoutBess, projects, recomputeClusters]);
 
   const projectById = useMemo(() => {
     const m = new Map<string, PvProject>();
@@ -209,6 +264,7 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
           const projectId = c.properties?.projectId as string;
           const p = projectById.get(projectId);
           if (!p) return null;
+          if (onlyContactEnriched && !hasContactEnrichment(p)) return null;
           return (
             <Marker 
               key={p.id} 
@@ -249,7 +305,11 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
 
     return (
       <>
-        {bessPairs.map((pair) => (
+        {bessPairs.map((pair) => {
+          const anyPair: any = pair as any;
+          const powerKw = (pair as any).bess_kw ?? pair.bess_power_kw ?? anyPair.bess_capacity_kw ?? anyPair.capacity_kw ?? anyPair.power_kw ?? anyPair.bess_power ?? null;
+          const energyKwh = (pair as any).bess_kwh ?? pair.bess_energy_kwh ?? anyPair.capacity_kwh ?? anyPair.energy_kwh ?? anyPair.bess_energy ?? null;
+          return (
           <React.Fragment key={`${pair.pv_id}-${pair.bess_id}`}>
             <Polyline
               positions={[[pair.pv_lat, pair.pv_lon] as [number, number], [pair.bess_lat, pair.bess_lon] as [number, number]]}
@@ -268,15 +328,11 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
                     </span>
                   </div>
                   <div>
-                    <div className="font-semibold">PV: {pair.pv_name || '—'}</div>
-                    <div className="text-sm">{pair.pv_capacity_kwp?.toLocaleString() || '—'} kWp • Status: {pair.pv_status || '—'}</div>
-                    {pair.pv_commissioning_date && <div className="text-sm">Commissioning: {pair.pv_commissioning_date}</div>}
-                    {pair.pv_operator_name && <div className="text-sm">Operator: {pair.pv_operator_name}</div>}
-                    {pair.pv_grid_operator_name && <div className="text-sm">Grid: {pair.pv_grid_operator_name}</div>}
-                  </div>
-                  <div>
                     <div className="font-semibold">BESS: {pair.bess_name || '—'}</div>
-                    <div className="text-sm">{pair.bess_power_kw?.toLocaleString() || '—'} kW • {pair.bess_energy_kwh?.toLocaleString() || '—'} kWh • Status: {pair.bess_status || '—'}</div>
+                    <div className="text-sm">{powerKw != null ? Number(powerKw).toLocaleString() : '—'} kW • {energyKwh != null ? Number(energyKwh).toLocaleString() : '—'} kWh • Status: {pair.bess_status || '—'}</div>
+                    {((pair as any).bess_operator ?? pair.bess_operator_name) && (
+                      <div className="text-sm">Operator: {(pair as any).bess_operator ?? pair.bess_operator_name}</div>
+                    )}
                     {pair.bess_commissioning_date && <div className="text-sm">Commissioning: {pair.bess_commissioning_date}</div>}
                     {pair.bess_operator_name && <div className="text-sm">Operator: {pair.bess_operator_name}</div>}
                     {pair.bess_grid_operator_name && <div className="text-sm">Grid: {pair.bess_grid_operator_name}</div>}
@@ -286,7 +342,7 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
               </Popup>
             </Marker>
           </React.Fragment>
-        ))}
+        );})}
       </>
     );
   };
