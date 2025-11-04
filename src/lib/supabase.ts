@@ -49,6 +49,53 @@ export interface PvProject {
   eeg_reference_price_ct_per_kwh?: number | null;
 }
 
+export interface WindProject {
+  id: string;
+  name: string | null;
+  capacity_kw: number | null;
+  status: 'operating' | 'connected' | 'planned' | string;
+  completion_date: string | null;
+  planned_date: string | null;
+  operator_name: string | null;
+  grid_operator_name: string | null;
+  lon: number;
+  lat: number;
+  // Optional context fields exposed by the view
+  state?: string | null;
+  postcode?: string | null;
+  city?: string | null;
+  municipality?: string | null;
+  district?: string | null;
+  windpark_name?: string | null;
+  onshore_offshore?: string | null;
+  manufacturer?: string | null;
+  model_type?: string | null;
+  hub_height_m?: number | null;
+  rotor_diameter_m?: number | null;
+}
+
+export interface BessProject {
+  id: string;
+  name: string | null;
+  status: 'operating' | 'connected' | 'planned' | string;
+  capacity_kw: number | null;
+  energy_kwh: number | null;
+  completion_date: string | null;
+  planned_date: string | null;
+  operator_name: string | null;
+  grid_operator_name: string | null;
+  lon: number;
+  lat: number;
+  // Optional context
+  state?: string | null;
+  postcode?: string | null;
+  city?: string | null;
+  municipality?: string | null;
+  district?: string | null;
+  lokation_mastr?: string | null;
+  storage_technology?: string | null;
+}
+
 export type PvBessPair = {
   pv_id: string; pv_mastr_unit_id: string; pv_name: string | null;
   pv_capacity_kwp: number | null; pv_status: string | null;
@@ -82,6 +129,67 @@ export async function pvMapSearch(params: PvSearchParams) {
   const { data, error } = await supabase.rpc('pv_map_search_v2', params as any);
   if (error) throw error;
   return (data || []) as PvProject[];
+}
+
+export async function windMapSearch(params: PvSearchParams) {
+  // Uses the wind_projects_map_v1 view; applies filters using lon/lat bounds and capacity/status/date
+  const { min_kwp, max_kwp, statuses, completed_after, completed_before, bbox } = params;
+  const [minLon, minLat, maxLon, maxLat] = bbox;
+
+  let query = supabase
+    .from('wind_projects_map_v1')
+    .select('*')
+    .gte('lon', minLon)
+    .lte('lon', maxLon)
+    .gte('lat', minLat)
+    .lte('lat', maxLat);
+
+  if (typeof min_kwp === 'number') query = query.gte('capacity_kw', min_kwp);
+  if (typeof max_kwp === 'number') query = query.lte('capacity_kw', max_kwp);
+  if (statuses && statuses.length) query = query.in('status', statuses);
+
+  // Date range: match either commissioning or planned dates when provided
+  const ands: string[] = [];
+  if (completed_after) {
+    ands.push(`or(and(completion_date.gte.${completed_after}),and(planned_date.gte.${completed_after}))`);
+  }
+  if (completed_before) {
+    ands.push(`or(and(completion_date.lte.${completed_before}),and(planned_date.lte.${completed_before}))`);
+  }
+  if (ands.length) {
+    // Combine all date constraints with and(...)
+    query = query.or(ands.join(','));
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []) as WindProject[];
+}
+
+export async function bessMapSearch(params: PvSearchParams) {
+  const { min_kwp, max_kwp, statuses, completed_after, completed_before, bbox } = params;
+  const [minLon, minLat, maxLon, maxLat] = bbox;
+
+  let query = supabase
+    .from('battery_projects_map_v1')
+    .select('*')
+    .gte('lon', minLon)
+    .lte('lon', maxLon)
+    .gte('lat', minLat)
+    .lte('lat', maxLat);
+
+  if (typeof min_kwp === 'number') query = query.gte('capacity_kw', min_kwp);
+  if (typeof max_kwp === 'number') query = query.lte('capacity_kw', max_kwp);
+  if (statuses && statuses.length) query = query.in('status', statuses);
+
+  const ands: string[] = [];
+  if (completed_after) ands.push(`or(and(completion_date.gte.${completed_after}),and(planned_date.gte.${completed_after}))`);
+  if (completed_before) ands.push(`or(and(completion_date.lte.${completed_before}),and(planned_date.lte.${completed_before}))`);
+  if (ands.length) query = query.or(ands.join(','));
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []) as BessProject[];
 }
 
 export async function fetchProjectContacts(ids: string[]): Promise<Pick<PvProject, 'id' | 'general_email' | 'contact_name' | 'contact_email' | 'contact_role'>[]> {
@@ -124,6 +232,22 @@ export async function getProjectById(id: string): Promise<PvProject | null> {
   }
   
   return data as PvProject;
+}
+
+export async function getWindProjectById(id: string): Promise<WindProject | null> {
+  // Use the map view for consistent fields used in the client
+  const { data, error } = await supabase
+    .from('wind_projects_map_v1')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    console.error('Error fetching wind project:', error);
+    return null;
+  }
+
+  return data as WindProject;
 }
 
 
