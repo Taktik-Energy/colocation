@@ -398,7 +398,7 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
                     {p.operator_name && <div className="text-sm">Operator: {p.operator_name}</div>}
                     {p.grid_operator_name && <div className="text-sm">Grid: {p.grid_operator_name}</div>}
                     <button
-                      onClick={() => navigate(`/project/${p.id}`)}
+                      onClick={() => window.open(`/project/${p.id}`, '_blank', 'noopener,noreferrer')}
                       className="mt-2 text-sm text-primary hover:underline font-medium"
                     >
                       View Details →
@@ -427,7 +427,7 @@ const PVMap: React.FC<{ fullScreen?: boolean }> = ({ fullScreen = true }) => {
                       {w.operator_name && <div className="text-sm">Operator: {w.operator_name}</div>}
                       {w.grid_operator_name && <div className="text-sm">Grid: {w.grid_operator_name}</div>}
                       <button
-                        onClick={() => navigate(`/wind/${w.id}`)}
+                        onClick={() => window.open(`/wind/${w.id}`, '_blank', 'noopener,noreferrer')}
                         className="mt-2 text-sm text-primary hover:underline font-medium"
                       >
                         View Details →
